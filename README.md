@@ -1,1 +1,0 @@
-# HandJournal-DualPage
