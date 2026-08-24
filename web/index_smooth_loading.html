@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HandJournal · 手账本</title>
+<style>
+:root{
+  --paper:#f4eee2; --ink:#3d382f; --panel:rgba(246,239,228,.9);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 20% 10%,rgba(255,255,255,.52),transparent 38%),
+    radial-gradient(circle at 85% 85%,rgba(72,54,35,.12),transparent 42%),
+    linear-gradient(135deg,#c6b9a7,#a99984);
+  color:var(--ink);font-family:Georgia,"Times New Roman",serif;
+}
+.reader{height:100%;display:flex;align-items:center;justify-content:center;padding:30px 15px 74px}
+.stage-wrap{position:relative;width:min(1320px,96vw);aspect-ratio:3/2}
+.zoom-shell{position:absolute;inset:0;transform-origin:center center}
+.stage{position:absolute;inset:0;perspective:2400px;filter:drop-shadow(0 26px 28px rgba(35,25,15,.28));touch-action:none}
+.book{position:absolute;inset:0;transform-style:preserve-3d}
+.page{position:absolute;top:0;width:50%;height:100%;overflow:hidden;background:var(--paper);box-shadow:inset 0 0 28px rgba(87,62,36,.10)}
+.left{left:0;border-radius:10px 0 0 10px}.right{left:50%;border-radius:0 16px 16px 0}
+.page img,.face img{width:200%;height:100%;max-width:none;object-fit:cover;display:block;-webkit-user-drag:none}
+.left img{transform:translateX(0)}.right img{transform:translateX(-50%)}
+.gutter{position:absolute;z-index:8;left:50%;top:0;bottom:0;width:18px;transform:translateX(-50%);background:linear-gradient(90deg,transparent,rgba(60,43,28,.16),rgba(255,255,255,.34),rgba(60,43,28,.10),transparent);pointer-events:none}
+.turning{position:absolute;z-index:20;top:0;width:50%;height:100%;display:none;transform-style:preserve-3d}
+.forward{left:50%;transform-origin:left center}.backward{left:0;transform-origin:right center}
+.turning.active.forward{display:block;animation:f .95s cubic-bezier(.19,.72,.15,1) forwards}
+.turning.active.backward{display:block;animation:b .95s cubic-bezier(.19,.72,.15,1) forwards}
+@keyframes f{to{transform:rotateY(-180deg)}}@keyframes b{to{transform:rotateY(180deg)}}
+.face{position:absolute;inset:0;overflow:hidden;backface-visibility:hidden;background:var(--paper)}.back{transform:rotateY(180deg)}
+.forward .front img{transform:translateX(-50%)}.forward .back img{transform:translateX(0)}
+.backward .front img{transform:translateX(0)}.backward .back img{transform:translateX(-50%)}
+.zone{position:absolute;z-index:30;top:0;bottom:0;width:20%;cursor:pointer}.prev{left:0}.next{right:0}
+
+.controls{position:fixed;z-index:50;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;background:var(--panel);backdrop-filter:blur(10px);box-shadow:0 8px 22px rgba(39,29,18,.18)}
+button{border:0;background:transparent;width:42px;height:36px;border-radius:50%;font-size:22px;color:#4a4237}
+button:disabled{opacity:.25}.counter{min-width:76px;text-align:center;font:11px Arial,sans-serif;letter-spacing:1px}
+.hint{position:fixed;z-index:50;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);font:10px Arial,sans-serif;color:#4b443b;background:rgba(246,239,228,.58);padding:6px 10px;border-radius:12px}
+.loading{position:absolute;z-index:40;inset:0;display:none;align-items:center;justify-content:center;background:rgba(244,238,226,.72);backdrop-filter:blur(4px);font:12px Arial,sans-serif;letter-spacing:.6px}
+.loading.show{display:flex}
+.loading::before{content:"";width:22px;height:22px;border:2px solid rgba(61,56,47,.2);border-top-color:#3d382f;border-radius:50%;margin-right:10px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status{position:fixed;z-index:60;left:50%;top:50%;transform:translate(-50%,-50%);padding:10px 14px;border-radius:12px;background:rgba(246,239,228,.92);font:12px Arial,sans-serif}.hidden{display:none}
+html,body{overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+@media(max-width:700px){.reader{padding:45px 0 70px}.stage-wrap{width:98vw}.hint{width:92vw;text-align:center}.gutter{width:12px}}
+</style>
+</head>
+<body>
+<div class="hint">单指左右翻页 · 双指缩放查看细节</div>
+<div class="status" id="status">正在读取最新手账页面…</div>
+<main class="reader">
+  <div class="stage-wrap">
+    <div class="zoom-shell" id="zoomShell">
+      <div class="stage" id="stage">
+        <div class="book">
+          <div class="page left"><img id="L"></div>
+          <div class="page right"><img id="R"></div>
+          <div class="gutter"></div>
+          <div class="turning" id="turn">
+            <div class="face front"><img id="F"></div>
+            <div class="face back"><img id="B"></div>
+          </div>
+          <div class="loading" id="loading">正在加载下一页</div>
+          <div class="zone prev" id="P"></div>
+          <div class="zone next" id="N"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="controls">
+  <button id="prev">‹</button><div class="counter" id="count">— / —</div><button id="next">›</button>
+</div>
+<script>
+const OWNER='karylee996',REPO='HandJournal-DualPage',BRANCH='main',DIR='web/assets';
+let pages=[],i=0,busy=false,scale=1,tx=0,ty=0;
+const L=document.getElementById('L'),R=document.getElementById('R'),F=document.getElementById('F'),B=document.getElementById('B'),T=document.getElementById('turn'),C=document.getElementById('count'),stage=document.getElementById('stage'),zoomShell=document.getElementById('zoomShell'),prevBtn=document.getElementById('prev'),nextBtn=document.getElementById('next'),statusEl=document.getElementById('status'),loading=document.getElementById('loading');
+
+const loaded=new Map();
+
+function num(name){const m=name.match(/^page(\d+)\.(jpg|jpeg|png|webp)$/i);return m?Number(m[1]):Infinity}
+
+async function loadPages(){
+  try{
+    const api=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${DIR}?ref=${BRANCH}&_=${Date.now()}`;
+    const res=await fetch(api,{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
+    if(!res.ok)throw new Error(res.status);
+    const list=await res.json();
+
+    const originals=list.filter(x=>x.type==='file'&&/^page\d+\.(jpg|jpeg|png|webp)$/i.test(x.name));
+    pages=originals.sort((a,b)=>num(a.name)-num(b.name)).map(x=>{
+      const base=x.name.replace(/\.(jpg|jpeg|png|webp)$/i,'');
+      return {
+        name:x.name,
+        // 如果以后有 optimized/pageN.webp，则优先使用；没有则回退原图
+        optimized:`optimized/${base}.webp?v=${x.sha}`,
+        original:x.download_url+`?v=${x.sha}`
+      };
+    });
+
+    if(!pages.length)throw new Error('no pages');
+    i=Math.min(i,pages.length-1);
+
+    await ensureLoaded(i);
+    show();
+    idlePreload();
+    statusEl.classList.add('hidden');
+  }catch(e){
+    console.error(e);
+    statusEl.textContent='读取失败，请确认 web/assets 中图片命名为 page1.jpg、page2.jpg…';
+  }
+}
+
+function testUrl(url){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.decoding='async';
+    img.onload=()=>resolve(url);
+    img.onerror=()=>resolve(null);
+    img.src=url;
+  });
+}
+
+async function resolvePageUrl(index){
+  if(index<0||index>=pages.length)return null;
+  if(loaded.has(index))return loaded.get(index);
+
+  // 先尝试 Vercel 本地优化图；不存在时再加载 GitHub 原图
+  const opt=await testUrl(pages[index].optimized);
+  const url=opt || pages[index].original;
+  loaded.set(index,url);
+  return url;
+}
+
+async function ensureLoaded(index){
+  const url=await resolvePageUrl(index);
+  if(!url)return null;
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.decoding='async';
+    img.onload=async()=>{try{await img.decode?.()}catch(_){ } resolve(url)};
+    img.onerror=()=>resolve(url);
+    img.src=url;
+  });
+}
+
+function idlePreload(){
+  const run=()=>{
+    [i+1,i-1,i+2].forEach(n=>{
+      if(n>=0&&n<pages.length) ensureLoaded(n);
+    });
+  };
+  if('requestIdleCallback' in window) requestIdleCallback(run,{timeout:1200});
+  else setTimeout(run,350);
+}
+
+async function show(){
+  if(!pages.length)return;
+  const url=await ensureLoaded(i);
+  L.src=R.src=url;
+  C.textContent=`${i+1} / ${pages.length}`;
+  prevBtn.disabled=i===0;nextBtn.disabled=i===pages.length-1;
+  idlePreload();
+}
+
+async function next(){
+  if(busy||scale>1.02||i>=pages.length-1)return;
+  busy=true; loading.classList.add('show');
+  const c=i;
+  const current=await ensureLoaded(c);
+  const target=await ensureLoaded(c+1);
+  loading.classList.remove('show');
+
+  // 只有目标页真正加载完成才开始翻页，避免一直显示旧页
+  L.src=current;R.src=target;F.src=current;B.src=target;
+  T.className='turning forward active';
+  setTimeout(()=>{i=c+1;show();T.className='turning';busy=false},960);
+}
+
+async function prev(){
+  if(busy||scale>1.02||i<=0)return;
+  busy=true; loading.classList.add('show');
+  const c=i;
+  const current=await ensureLoaded(c);
+  const target=await ensureLoaded(c-1);
+  loading.classList.remove('show');
+
+  L.src=target;R.src=current;F.src=current;B.src=target;
+  T.className='turning backward active';
+  setTimeout(()=>{i=c-1;show();T.className='turning';busy=false},960);
+}
+
+nextBtn.onclick=next;prevBtn.onclick=prev;document.getElementById('N').onclick=next;document.getElementById('P').onclick=prev;
+
+function apply(){zoomShell.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`}
+function resetZoom(){scale=1;tx=0;ty=0;apply()}
+const pts=new Map();let pinchD=0,pinchScale=1,pan=null,swipe=null;
+const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+
+stage.addEventListener('pointerdown',e=>{
+  try{stage.setPointerCapture(e.pointerId)}catch(_){}
+  pts.set(e.pointerId,e);
+  if(pts.size===1){swipe={x:e.clientX,y:e.clientY};if(scale>1.02)pan={x:e.clientX,y:e.clientY,tx,ty}}
+  else if(pts.size===2){const[a,b]=[...pts.values()];pinchD=dist(a,b);pinchScale=scale;swipe=null;pan=null}
+});
+stage.addEventListener('pointermove',e=>{
+  if(!pts.has(e.pointerId))return;pts.set(e.pointerId,e);
+  if(pts.size===2){
+    const[a,b]=[...pts.values()];scale=Math.max(1,Math.min(3.5,pinchScale*dist(a,b)/pinchD));
+    if(scale<=1.02){tx=0;ty=0}apply();e.preventDefault();
+  }else if(pts.size===1&&scale>1.02&&pan){
+    tx=pan.tx+(e.clientX-pan.x);ty=pan.ty+(e.clientY-pan.y);apply();e.preventDefault();
+  }
+});
+stage.addEventListener('pointerup',e=>{
+  const end={x:e.clientX,y:e.clientY};pts.delete(e.pointerId);
+  if(scale<=1.02){
+    resetZoom();
+    if(swipe){const dx=end.x-swipe.x,dy=end.y-swipe.y;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.15)(dx<0?next:prev)()}
+  }
+  if(pts.size<2)pinchD=0;if(!pts.size){pan=null;swipe=null}
+});
+stage.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);if(!pts.size){pan=null;swipe=null}});
+stage.addEventListener('dblclick',()=>{scale=scale>1.02?1:2;tx=0;ty=0;apply()});
+
+window.addEventListener('keydown',e=>{if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev()});
+window.addEventListener('focus',loadPages);
+loadPages();
+</script>
+</body>
+</html>
