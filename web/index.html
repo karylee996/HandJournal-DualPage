@@ -220,13 +220,11 @@ async function loadPages(){
       .sort((a,b) => numericPageNumber(a.name) - numericPageNumber(b.name))
       .map(x => ({
         name:x.name,
-        // 使用本地 Vercel 静态资源，速度更快；SHA 用来强制刷新同名替换图片。
-        url:`assets/${encodeURIComponent(x.name)}?v=${x.sha}`
+        url:x.download_url + `?v=${x.sha}`
       }));
 
     if(!pages.length) throw new Error('web/assets 中没有找到 page*.jpg/png/webp');
 
-    // 预加载所有页面，减少翻页时闪烁。
     pages.forEach(p => {
       const img = new Image();
       img.src = p.url;
@@ -255,14 +253,11 @@ function next(){
   if(busy || !pages.length || i >= pages.length - 1) return;
   busy = true;
   const current = i;
-
   L.src = pages[current].url;
   R.src = pages[current+1].url;
   F.src = pages[current].url;
   B.src = pages[current+1].url;
-
   T.className = 'turning forward active';
-
   setTimeout(() => {
     i = current + 1;
     show();
@@ -275,14 +270,11 @@ function prev(){
   if(busy || !pages.length || i <= 0) return;
   busy = true;
   const current = i;
-
   L.src = pages[current-1].url;
   R.src = pages[current].url;
   F.src = pages[current].url;
   B.src = pages[current-1].url;
-
   T.className = 'turning backward active';
-
   setTimeout(() => {
     i = current - 1;
     show();
@@ -313,7 +305,6 @@ stage.addEventListener('pointerup', e => {
   const dx = e.clientX - x;
   const dy = e.clientY - y;
   x = y = null;
-
   if(Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.15){
     (dx < 0 ? next : prev)();
   }
@@ -323,10 +314,9 @@ stage.addEventListener('pointercancel', () => {
   x = y = null;
 });
 
-// 每次页面重新获得焦点时再检查一次，方便刚上传图片后直接刷新查看。
 window.addEventListener('focus', () => loadPages());
-
 loadPages();
 </script>
+<!-- deployment-refresh: 2026-08-24 -->
 </body>
 </html>
